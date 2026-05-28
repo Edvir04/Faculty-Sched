@@ -367,7 +367,7 @@ export function exportSchedulePdf(sections: PrintableComlabSection[], meta: Sche
     doc.save(pdfFileName(meta, layout));
 }
 
-function renderSectionTableHtml(section: PrintableComlabSection, tableFont: string, cellPad: string): string {
+function renderSectionTableHtml(section: PrintableComlabSection): string {
     const headerCells = PRINT_TABLE_HEADERS.map((h) => `<th scope="col">${escapeHtml(h)}</th>`).join('');
     const bodyRows = section.rows
         .map(

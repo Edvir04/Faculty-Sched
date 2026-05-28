@@ -48,7 +48,7 @@ import {
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { Menu, Plus, Users } from 'lucide-react';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -224,8 +224,10 @@ export default function Teachers() {
         return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
     }, [teacherOptions, teachers]);
 
-    const resolveTeacherFromProps = (teacher: TeacherRow): TeacherRow =>
-        teachers.find((row) => row.id === teacher.id) ?? teacher;
+    const resolveTeacherFromProps = useCallback(
+        (teacher: TeacherRow): TeacherRow => teachers.find((row) => row.id === teacher.id) ?? teacher,
+        [teachers],
+    );
 
     const sortedSubjectAssignments = useMemo(() => {
         if (!subjectsTeacher) {
@@ -563,7 +565,7 @@ export default function Teachers() {
         }
 
         return sortSubjectAssignments(resolveTeacherFromProps(deletingTeacher).subject_assignments);
-    }, [deletingTeacher, teachers]);
+    }, [deletingTeacher, resolveTeacherFromProps]);
 
     const deleteConflictSchedules = useMemo<ScheduleConflictRow[]>(
         () =>
@@ -597,7 +599,7 @@ export default function Teachers() {
             replacementTeacherOptions,
             freshTeacher.id,
         );
-    }, [deletingTeacher, deleteAssignments, deleteConflictSchedules, replacementTeacherOptions, teachers]);
+    }, [deletingTeacher, deleteAssignments, deleteConflictSchedules, replacementTeacherOptions, resolveTeacherFromProps]);
 
     const openDeleteConfirm = (teacher: TeacherRow) => {
         setDeletingTeacher(resolveTeacherFromProps(teacher));
