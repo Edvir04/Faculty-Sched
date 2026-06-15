@@ -8,16 +8,16 @@ export default function Welcome() {
     return (
         <>
             <Head title="IT Faculty Schedule">
-                <link rel="preload" href="/BGlanding.jpg" as="image" />
+                <link rel="preload" href="/images/LNU.jfif" as="image" />
             </Head>
             <div className="relative isolate min-h-screen text-white">
                 <div
                     aria-hidden
-                    className="pointer-events-none fixed inset-0 -z-10 bg-blue-950 bg-[url('/BGlanding.jpg')] bg-cover bg-center bg-no-repeat"
+                    className="pointer-events-none fixed inset-0 -z-10 bg-blue-950 bg-[url('/images/LNU.jfif')] bg-cover bg-center bg-no-repeat"
                 />
                 <div
                     aria-hidden
-                    className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(to_right,#1e3a8a_0%,#1e3a8a_58%,rgba(30,58,138,0.5)_64%,transparent_70%)]"
+                    className="pointer-events-none fixed inset-0 -z-10 bg-[#001f54]/90"
                 />
                 <div className="relative flex min-h-screen flex-col items-center p-6 lg:justify-center lg:p-8">
                     <div className="flex w-full flex-col items-center lg:grow">
