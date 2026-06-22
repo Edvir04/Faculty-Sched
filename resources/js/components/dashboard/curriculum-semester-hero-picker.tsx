@@ -205,6 +205,10 @@ export default function CurriculumSemesterHeroPicker() {
                                                 event.preventDefault();
                                                 event.stopPropagation();
                                             }}
+                                            onPointerUp={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                            }}
                                             onClick={(event) => {
                                                 event.preventDefault();
                                                 event.stopPropagation();

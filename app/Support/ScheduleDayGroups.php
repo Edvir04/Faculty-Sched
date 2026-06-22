@@ -32,8 +32,8 @@ class ScheduleDayGroups
     public static function expand(string $day): array
     {
         return match ($day) {
-            self::MONDAY_THURSDAY => ['Monday', 'Tuesday', 'Wednesday', 'Thursday'],
-            self::TUESDAY_FRIDAY => ['Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+            self::MONDAY_THURSDAY => ['Monday', 'Thursday'],
+            self::TUESDAY_FRIDAY => ['Tuesday', 'Friday'],
             default => [$day],
         };
     }

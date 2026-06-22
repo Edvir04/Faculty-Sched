@@ -13,13 +13,13 @@ import { jsPDF } from 'jspdf';
 import { autoTable, type CellDef, type RowInput } from 'jspdf-autotable';
 
 /**
- * Option A — Wednesday appears only in the separate WED table, not in MTH/TFRI columns.
- * MTH = Mon–Thu block minus Wednesday; TFRI = Tue–Fri block minus Wednesday.
+ * MTH = Monday & Thursday; TFRI = Tuesday & Friday.
+ * These are the two specific days each group creates schedules for.
  */
-export const MTH_DAYS = ['Monday', 'Tuesday', 'Thursday'] as const;
-export const TFRI_DAYS = ['Tuesday', 'Thursday', 'Friday'] as const;
+export const MTH_DAYS = ['Monday', 'Thursday'] as const;
+export const TFRI_DAYS = ['Tuesday', 'Friday'] as const;
 
-/** Weekdays represented in the main MTH/TFRI grid (excludes Wednesday). */
+/** Weekdays represented in the main MTH/TFRI grid. */
 export const WEEKDAY_MAIN_GRID = ['Monday', 'Tuesday', 'Thursday', 'Friday'] as const;
 
 export type GridCellContent = {
@@ -56,8 +56,22 @@ export type SingleDayGridSection = {
     cells: Record<string, GridCellContent | null>;
 };
 
+/**
+ * Per-comlab timetable: each section is one comlab, days are columns.
+ * Cell key format: `${start}|${end}|${day.toLowerCase()}`.
+ */
+export type UniformDayGridSection = {
+    type: 'uniform-day';
+    comlabId: number;
+    comlabLabel: string;
+    timeRows: GridTimeRow[];
+    /** Ordered weekdays that have at least one schedule for this comlab. */
+    days: string[];
+    cells: Record<string, GridCellContent | null>;
+};
+
 export type ScheduleGridPrintModel = {
-    sections: (MthTfriGridSection | SingleDayGridSection)[];
+    sections: (MthTfriGridSection | SingleDayGridSection | UniformDayGridSection)[];
 };
 
 const EMPTY_CELL = '—';
@@ -331,20 +345,23 @@ export const GRID_PRINT_POPUP_BLOCKED_MESSAGE = SCHEDULE_PRINT_POPUP_BLOCKED_MES
 export const GRID_EMPTY_SLOTS_HINT =
     'No slots match standard time rows; check start/end times.';
 
-/** Max comlab columns across sections (for preview min-width). */
+/** Number of comlab sections in the model. */
 export function countGridMaxComlabs(model: ScheduleGridPrintModel): number {
-    let max = 0;
-    for (const section of model.sections) {
-        max = Math.max(max, section.comlabs.length);
-    }
-    return max;
+    return model.sections.filter((s) => s.type === 'uniform-day').length;
 }
 
-/** Max data columns (MTH+TFRI pairs or single-day comlabs) for table width. */
+/** Max data columns (days) across all sections, for table min-width calculation. */
 export function countGridMaxSlotColumns(model: ScheduleGridPrintModel): number {
     let max = 0;
     for (const section of model.sections) {
-        const cols = section.type === 'mth-tfri' ? section.comlabs.length * 2 : section.comlabs.length;
+        let cols: number;
+        if (section.type === 'mth-tfri') {
+            cols = section.comlabs.length * 2;
+        } else if (section.type === 'uniform-day') {
+            cols = section.days.length;
+        } else {
+            cols = (section as SingleDayGridSection).comlabs.length;
+        }
         max = Math.max(max, cols);
     }
     return max;
@@ -366,30 +383,69 @@ export function gridPreviewMinWidthPx(slotColumnCount: number, layout: ScheduleP
     return Math.max(pagePx, gridTableMinWidthPx(slotColumnCount));
 }
 
+const WEEKDAY_DISPLAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
+
+/** Simple cell key scoped to a single comlab. */
+function perComlabCellKey(start: string, end: string, day: string): string {
+    return `${start}|${end}|${day.toLowerCase()}`;
+}
+
+/**
+ * Builds a per-comlab timetable section where each weekday is its own column.
+ * Day groups (MTH/TFRI) stored as separate rows are resolved naturally since
+ * each row is keyed by its individual day name.
+ */
+export function buildComlabDayGrid(
+    schedules: SchedulePrintSourceRow[],
+    comlabId: number,
+    comlabLabel: string,
+): UniformDayGridSection | null {
+    const relevant = schedules.filter((r) => r.comlab_id === comlabId);
+    if (relevant.length === 0) {
+        return null;
+    }
+
+    const daySet = new Set<string>(relevant.map((r) => r.day));
+    const days = WEEKDAY_DISPLAY_ORDER.filter((d) => daySet.has(d));
+    if (days.length === 0) {
+        return null;
+    }
+
+    const slots = collectTimeSlots(relevant);
+    const cells: Record<string, GridCellContent | null> = {};
+
+    for (const row of relevant) {
+        for (const slot of slots) {
+            if (row.start_time !== slot.start || row.end_time !== slot.end) {
+                continue;
+            }
+            const key = perComlabCellKey(row.start_time, row.end_time, row.day);
+            cells[key] = mergeCellContents(cells[key] ?? null, row);
+        }
+    }
+
+    return {
+        type: 'uniform-day',
+        comlabId,
+        comlabLabel,
+        timeRows: injectBreakRow(slots),
+        days,
+        cells,
+    };
+}
+
 export function buildScheduleGridPrintModel(
     schedules: SchedulePrintSourceRow[],
     comlabOrder: ComlabPrintOrder[] = [],
 ): ScheduleGridPrintModel {
-    const sections: (MthTfriGridSection | SingleDayGridSection)[] = [];
+    const orderedIds = orderedComlabs(schedules, comlabOrder);
+    const sections: UniformDayGridSection[] = [];
 
-    const main = buildMthTfriGrid(schedules, comlabOrder);
-    if (main) {
-        sections.push(main);
-    }
-
-    const wed = buildSingleDayGrid(schedules, comlabOrder, 'Wednesday', 'WED');
-    if (wed) {
-        sections.push(wed);
-    }
-
-    const sat = buildSingleDayGrid(schedules, comlabOrder, 'Saturday', 'SAT');
-    if (sat) {
-        sections.push(sat);
-    }
-
-    const sun = buildSingleDayGrid(schedules, comlabOrder, 'Sunday', 'SUN');
-    if (sun) {
-        sections.push(sun);
+    for (const comlab of orderedIds) {
+        const section = buildComlabDayGrid(schedules, comlab.id, comlab.label);
+        if (section) {
+            sections.push(section);
+        }
     }
 
     return { sections };
@@ -491,9 +547,46 @@ function renderSingleDayTable(section: SingleDayGridSection): string {
   </table>`;
 }
 
+function renderUniformDayTable(section: UniformDayGridSection): string {
+    const slotCols = section.days.length;
+
+    const dayHeaders = section.days
+        .map((day) => `<th class="comlab-h">${escapeHtml(day.toUpperCase())}</th>`)
+        .join('');
+
+    const bodyRows = section.timeRows
+        .map((row) => {
+            if (row.kind === 'break') {
+                const colspan = 1 + slotCols;
+                return `<tr class="break-row"><td colspan="${colspan}" class="break">${escapeHtml(row.label)}</td></tr>`;
+            }
+            const cells = section.days
+                .map((day) => {
+                    const content = section.cells[perComlabCellKey(row.start, row.end, day)];
+                    return renderCellHtml(content);
+                })
+                .join('');
+            return `<tr>${renderTimeCellHtml(row.start, row.end)}${cells}</tr>`;
+        })
+        .join('');
+
+    return `<div class="section-block">
+    <h2 class="comlab-title">${escapeHtml(section.comlabLabel)}</h2>
+    <table class="grid uniform-day">
+      ${buildColgroupHtml(slotCols)}
+      <thead><tr><th class="time-h">TIME</th>${dayHeaders}</tr></thead>
+      <tbody>${bodyRows}</tbody>
+    </table>
+  </div>`;
+}
+
 function buildScheduleGridTablesHtml(model: ScheduleGridPrintModel): string {
     return model.sections
-        .map((s) => (s.type === 'mth-tfri' ? renderMthTfriTable(s) : renderSingleDayTable(s)))
+        .map((s) => {
+            if (s.type === 'mth-tfri') return renderMthTfriTable(s);
+            if (s.type === 'uniform-day') return renderUniformDayTable(s);
+            return renderSingleDayTable(s as SingleDayGridSection);
+        })
         .join('');
 }
 
@@ -538,9 +631,19 @@ export function buildScheduleGridPrintStyles(layout: SchedulePaperLayout, slotCo
       color: #475569;
     }
     .schedule-grid-print-root .section-block {
-      margin-bottom: 14px;
+      margin-bottom: 20px;
       page-break-inside: avoid;
       width: 100%;
+    }
+    .schedule-grid-print-root .comlab-title {
+      margin: 0 0 4px;
+      font-size: 9pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #1e293b;
+      border-bottom: 1.5px solid #1e293b;
+      padding-bottom: 2px;
     }
     .schedule-grid-print-root table.grid {
       width: 100%;
@@ -630,7 +733,7 @@ export function buildScheduleGridPrintBodyHtml(model: ScheduleGridPrintModel, me
     <p class="semester">${escapeHtml(meta.semesterLabel)}</p>
     <p class="meta">${escapeHtml(org)} · Generated ${escapeHtml(generated)} · ${escapeHtml(layout.label)}</p>
     <div class="section-block">${tables}</div>
-    <p class="footer">${escapeHtml(layout.label)} · Timetable grid</p>
+    <p class="footer">${escapeHtml(layout.label)} · Timetable grid (by day)</p>
   </div>`;
 }
 
@@ -790,6 +893,52 @@ function buildSingleDayAutoTableBody(section: SingleDayGridSection): RowInput[] 
     return body;
 }
 
+function buildUniformDayAutoTableHead(section: UniformDayGridSection): CellDef[][] {
+    return [
+        [
+            { content: 'TIME', styles: { halign: 'center', fontStyle: 'bold' } },
+            ...section.days.map((day) => ({
+                content: day.toUpperCase(),
+                styles: { halign: 'center', fontStyle: 'bold' },
+            })),
+        ],
+    ];
+}
+
+function buildUniformDayAutoTableBody(section: UniformDayGridSection): RowInput[] {
+    const totalCols = 1 + section.days.length;
+    const body: RowInput[] = [];
+
+    for (const row of section.timeRows) {
+        if (row.kind === 'break') {
+            body.push([
+                {
+                    content: row.label,
+                    colSpan: totalCols,
+                    styles: { halign: 'center', fontStyle: 'bold', fillColor: [241, 245, 249] },
+                },
+            ]);
+            continue;
+        }
+
+        const cells: CellDef[] = [
+            {
+                content: formatTimeCellForPdf(row.start, row.end),
+                styles: { fontStyle: 'bold', halign: 'center', valign: 'middle', fontSize: 6 },
+            },
+        ];
+        for (const day of section.days) {
+            cells.push({
+                content: formatCellForPdf(section.cells[perComlabCellKey(row.start, row.end, day)]),
+                styles: { halign: 'center', valign: 'middle' },
+            });
+        }
+        body.push(cells);
+    }
+
+    return body;
+}
+
 function buildGridPdfColumnStyles(
     totalCols: number,
     tableWidth: number,
@@ -856,19 +1005,32 @@ function exportScheduleGridPdfWithAutoTable(model: ScheduleGridPrintModel, meta:
             doc.setFontSize(9);
             doc.text(`${section.day.toUpperCase()} (${section.shortLabel})`, margin, y);
             y += 5;
+        } else if (section.type === 'uniform-day') {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.text(section.comlabLabel, margin, y);
+            y += 5;
         }
 
         const head =
             section.type === 'mth-tfri'
                 ? buildMthTfriAutoTableHead(section.comlabs)
-                : buildSingleDayAutoTableHead(section);
+                : section.type === 'uniform-day'
+                  ? buildUniformDayAutoTableHead(section)
+                  : buildSingleDayAutoTableHead(section as SingleDayGridSection);
         const body =
             section.type === 'mth-tfri'
                 ? buildMthTfriAutoTableBody(section)
-                : buildSingleDayAutoTableBody(section);
+                : section.type === 'uniform-day'
+                  ? buildUniformDayAutoTableBody(section)
+                  : buildSingleDayAutoTableBody(section as SingleDayGridSection);
 
         const totalCols =
-            section.type === 'mth-tfri' ? 1 + section.comlabs.length * 2 : 1 + section.comlabs.length;
+            section.type === 'mth-tfri'
+                ? 1 + section.comlabs.length * 2
+                : section.type === 'uniform-day'
+                  ? 1 + section.days.length
+                  : 1 + (section as SingleDayGridSection).comlabs.length;
 
         autoTable(doc, {
             startY: y,

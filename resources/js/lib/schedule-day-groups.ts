@@ -17,16 +17,16 @@ export const SCHEDULE_SINGLE_DAY_HINT = 'Creates one schedule for this day only.
 export const SCHEDULE_DAY_GROUPS = [
     {
         value: 'Monday-Thursday',
-        label: 'Monday – Thursday',
+        label: 'Monday & Thursday',
         shortLabel: 'MTH',
-        days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday'] as ScheduleWeekday[],
+        days: ['Monday', 'Thursday'] as ScheduleWeekday[],
         hint: SCHEDULE_DAY_GROUP_HINT,
     },
     {
         value: 'Tuesday-Friday',
-        label: 'Tuesday – Friday',
+        label: 'Tuesday & Friday',
         shortLabel: 'TFRI',
-        days: ['Tuesday', 'Wednesday', 'Thursday', 'Friday'] as ScheduleWeekday[],
+        days: ['Tuesday', 'Friday'] as ScheduleWeekday[],
         hint: SCHEDULE_DAY_GROUP_HINT,
     },
 ] as const;

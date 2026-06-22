@@ -268,8 +268,8 @@ export function SchedulePrintModal({ open, onOpenChange, schedules, comlabs, met
                 <DialogHeader className="shrink-0 border-b border-border/60 px-6 pb-4 pt-6 pr-12">
                     <DialogTitle className="font-serif">Print schedule</DialogTitle>
                     <DialogDescription>
-                        Preview the class timetable grid or a legacy list by comlab. Choose paper size, then print or
-                        download a PDF.
+                        Preview the class timetable grid (each day as a separate column) or a legacy list by comlab.
+                        Choose paper size, then print or download a PDF.
                     </DialogDescription>
                     <div className="mt-4 grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
@@ -338,7 +338,7 @@ export function SchedulePrintModal({ open, onOpenChange, schedules, comlabs, met
                 <DialogFooter className="shrink-0 flex flex-col gap-2 border-t border-border/60 bg-background px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
                     <p className="font-serif text-xs text-muted-foreground">
                         Export: {paperLayout.label}, landscape
-                        {layoutMode === 'grid' ? ', timetable grid (MTH / TFRI)' : ', grouped by comlab'}
+                        {layoutMode === 'grid' ? ', timetable grid (by day)' : ', grouped by comlab'}
                     </p>
                     <div className="flex flex-wrap justify-end gap-2">
                         <Button type="button" variant="outline" className="font-serif" onClick={() => onOpenChange(false)}>
